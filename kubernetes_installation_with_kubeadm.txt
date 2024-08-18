@@ -63,9 +63,69 @@ Open /etc/containerd/config.toml and add below. Also comment out disabled_plugin
 Restart Containerd
 systemctl status containerd
 
-
 Install kubeadm, kubelet and kubectl
+-------------------------------------------------------------------
+Execute below commands in all nodes to install  kubeadm, kubelet and kubectl
+
+sudo apt-get update
+# apt-transport-https may be a dummy package; if so, you can skip that package
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+
+# If the directory `/etc/apt/keyrings` does not exist, it should be created before the curl command, read the note below.
+# sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+sudo systemctl enable --now kubelet
+
 Setup the Control plane node
-Join worker nodes to cluster
+-----------------------------------------------------------------------
+In the Control plane(master) node, Execute below steps.
+kubeadm init --apiserver-advertise-address 10.0.0.30 --pod-network-cidr 172.16.0.0/16
+
+Copy the output of above command to some textpad/notepad.
+Now execute below commands as in output with a OS user which we want to access k8s cluser in master node
+
+   mkdir -p $HOME/.kube
+   sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+   sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
 Install CNI plugin(flannel)
+---------------------------------------------------
+In controle plane node execute below comamnds.
+
+wget https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+
+Update below in kube-flannel.yml. The interface(--iface) needs to be added if virtual box used to create VMs.
+"Network": "172.16.0.0/16"
+
+      containers:
+      - args:
+        - --ip-masq
+        - --kube-subnet-mgr
+		- --iface eth1
+
+Apply flannel configuration in cluster
+kubectl apply -f kube-flannel.yml
+
+Veirfy all pods running without any issues.
+kubectl get pods --all-namespaces
+  
+
+Join worker nodes to cluster
+---------------------------------
+Copy the below command from the output in notepad and execute in all worker nodes and make sure they joined cluster.
+
+kubeadm join <control-plane-host>:<control-plane-port> --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+
+verify all nodes are ready and all pods up and running.
+kubectl get nodes
+kubectl get pods --all-namespaces
+
 Verify cluster operation with an example
+------------------------------------------------
+Take an example application and deploy it in the cluster to make sure the pods are running without any issues.
