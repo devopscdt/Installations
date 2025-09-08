@@ -1,4 +1,36 @@
-This file describes the steps to install kubernetes cluster using kubeadm.
+3 VMs required for this demo. I created 3 VMs using vagrant and virtual box.
+The below is the Vagrantfile.
+
+Vagrant.configure("2") do |config|
+  
+  config.vm.define "k8s-master" do |master|
+    master.vm.box = "ubuntu/bionic64"
+    master.vm.network "private_network", ip: "10.0.0.30"
+    master.vm.boot_timeout = 600
+    master.vm.hostname = "k8s-master"
+    master.vm.provider "virtualbox" do |vb|
+      vb.memory = 2048
+      vb.cpus = 2
+    end
+    master.vm.provision "shell", inline: "echo 'This is the Kubernetes Master Node'"
+  end
+
+  (1..2).each do |i|
+    config.vm.define "k8s-worker-#{i}" do |worker|
+      worker.vm.box = "ubuntu/bionic64"
+	  worker.vm.boot_timeout = 600
+      worker.vm.network "private_network", ip: "10.0.0.3#{i}"
+      worker.vm.provider "virtualbox"
+      worker.vm.hostname = "k8s-worker-#{i}"
+      worker.vm.provision "shell", inline: "echo 'This is Kubernetes Worker Node #{i}'"
+    end
+  end
+end
+
+
+
+The below steps describe the steps to install kubernetes cluster using kubeadm.
+
 
 Verify the prerequisites
 -----------------------------------
@@ -15,6 +47,9 @@ Verify the prerequisites
 7. Disable swap in each node.We can do either of below steps for this.
    swapoff -a (for temporairly disabling)
    Comment swap section in /etc/fstab (For permenantly disabling the swap)
+8. Load the br_netfilter kernel module and add setting for iptables.
+sudo modprobe br_netfilter
+sysctl net.bridge.bridge-nf-call-iptables=1
 
 
 Install Container Runtime
@@ -61,6 +96,7 @@ Open /etc/containerd/config.toml and add below. Also comment out disabled_plugin
     SystemdCgroup = true
 
 Restart Containerd
+systemctl restart containerd
 systemctl status containerd
 
 Install kubeadm, kubelet and kubectl
@@ -81,6 +117,12 @@ sudo apt-get update
 sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 sudo systemctl enable --now kubelet
+
+Note:- If the ip addresses are not correct in the machines because of virtual box interfaces, add them manually in the below file and restart kubelet.
+vi /etc/default/kubelet
+KUBELET_EXTRA_ARGS="--node-ip=10.0.0.41"
+
+systemctl restart kubelet
 
 Setup the Control plane node
 -----------------------------------------------------------------------
@@ -107,7 +149,7 @@ Update below in kube-flannel.yml. The interface(--iface) needs to be added if vi
       - args:
         - --ip-masq
         - --kube-subnet-mgr
-		- --iface eth1
+		- --iface=<interface-name>
 
 Apply flannel configuration in cluster
 kubectl apply -f kube-flannel.yml
